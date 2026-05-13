@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Create Account — Portfolio Tracker{% endblock %}
+
+{% block content %}
+<h1>Create New Account</h1>
+
+<form method="POST" class="form-card">
+    <div class="form-group">
+        <label for="name">Account Name</label>
+        <input type="text" id="name" name="name" required
+               value="{{ data.get('name', '') }}"
+               placeholder="e.g. My Crypto Portfolio">
+    </div>
+
+    <div class="form-group">
+        <label for="account_type">Account Type</label>
+        <select id="account_type" name="account_type" required>
+            <option value="">— Select type —</option>
+            <option value="stock" {{ 'selected' if data.get('account_type') == 'stock' else '' }}>
+                Stock / ETF
+            </option>
+            <option value="crypto" {{ 'selected' if data.get('account_type') == 'crypto' else '' }}>
+                Crypto
+            </option>
+        </select>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create Account</button>
+        <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-outline">Cancel</a>
+    </div>
+</form>
+{% endblock %}

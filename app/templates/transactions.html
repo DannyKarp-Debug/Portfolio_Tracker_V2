@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions — Portfolio Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Transaction History</h1>
+    <a href="{{ url_for('transactions.create_transaction') }}" class="btn btn-primary">+ New Transaction</a>
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar">
+    <div class="form-group">
+        <label for="filter_account">Account</label>
+        <select id="filter_account" name="account_id">
+            <option value="">All Accounts</option>
+            {% for acct in accounts %}
+            <option value="{{ acct.id }}"
+                    {{ 'selected' if selected_account_id == acct.id else '' }}>
+                {{ acct.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="filter_type">Type</label>
+        <select id="filter_type" name="tx_type">
+            <option value="">All Types</option>
+            {% for t in ['deposit','withdrawal','buy','sell','dividend'] %}
+            <option value="{{ t }}" {{ 'selected' if selected_tx_type == t else '' }}>
+                {{ t | capitalize }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-outline">Filter</button>
+</form>
+
+{% if transactions %}
+<table class="holdings-table sortable" id="txTable">
+    <thead>
+        <tr>
+            <th data-sort="string">Date</th>
+            <th data-sort="string">Account</th>
+            <th data-sort="string">Type</th>
+            <th data-sort="string">Asset</th>
+            <th data-sort="number">Quantity</th>
+            <th data-sort="number">Price/Unit</th>
+            <th data-sort="number">Amount</th>
+            <th data-sort="string">Notes</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tx in transactions %}
+        <tr>
+            <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') if tx.timestamp else '' }}</td>
+            <td>{{ tx.account.name if tx.account else '' }}</td>
+            <td>
+                <span class="badge badge-tx-{{ tx.tx_type }}">{{ tx.tx_type | upper }}</span>
+            </td>
+            <td>{{ (tx.asset_symbol or '') | upper }}</td>
+            <td>{{ tx.quantity if tx.quantity else '—' }}</td>
+            <td>{{ ('$' ~ "{:,.4f}".format(tx.price_per_unit)) if tx.price_per_unit else '—' }}</td>
+            <td>${{ "{:,.2f}".format(tx.total_amount) }}</td>
+            <td class="muted">{{ tx.notes or '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No transactions found matching your filters.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/sort.js') }}"></script>
+{% endblock %}

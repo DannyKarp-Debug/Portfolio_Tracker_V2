@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}{{ summary.account.name }} — Portfolio Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        {{ summary.account.name }}
+        <span class="badge badge-{{ summary.account.account_type }}">{{ summary.account.account_type | upper }}</span>
+    </h1>
+    <a href="{{ url_for('transactions.create_transaction') }}?account_id={{ summary.account.id }}"
+       class="btn btn-primary">+ Add Transaction</a>
+</div>
+
+<!-- Account Summary Cards -->
+<div class="summary-cards">
+    <div class="card">
+        <div class="card-label">Total Value</div>
+        <div class="card-value">${{ "{:,.2f}".format(summary.total_value) }}</div>
+    </div>
+    <div class="card">
+        <div class="card-label">Total Invested</div>
+        <div class="card-value">${{ "{:,.2f}".format(summary.total_invested) }}</div>
+    </div>
+    <div class="card">
+        <div class="card-label">Cash Balance</div>
+        <div class="card-value">${{ "{:,.2f}".format(summary.cash_balance) }}</div>
+    </div>
+    <div class="card">
+        <div class="card-label">P&amp;L</div>
+        <div class="card-value {{ 'positive' if summary.total_pnl >= 0 else 'negative' }}">
+            ${{ "{:+,.2f}".format(summary.total_pnl) }} ({{ "{:+,.2f}".format(summary.total_pnl_pct) }}%)
+        </div>
+    </div>
+</div>
+
+<!-- Holdings Table -->
+{% if summary.holdings %}
+<div class="holdings-section">
+    <h2>Holdings</h2>
+    <table class="holdings-table sortable" id="holdingsTable">
+        <thead>
+            <tr>
+                <th data-sort="string">Asset</th>
+                <th data-sort="string">Symbol</th>
+                <th data-sort="number">Quantity</th>
+                <th data-sort="number">Avg Cost</th>
+                <th data-sort="number">Current Price</th>
+                <th data-sort="number">Current Value</th>
+                <th data-sort="number">P&amp;L ($)</th>
+                <th data-sort="number">P&amp;L (%)</th>
+                <th data-sort="number">Weight (%)</th>
+                <th>Chart</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in summary.holdings %}
+            <tr>
+                <td>{{ h.asset_name }}</td>
+                <td class="symbol">{{ h.asset_symbol | upper }}</td>
+                <td>{{ h.quantity }}</td>
+                <td>${{ "{:,.4f}".format(h.avg_cost) }}</td>
+                <td>
+                    {% if h.current_price is not none %}
+                    ${{ "{:,.4f}".format(h.current_price) }}
+                    {% else %}
+                    <span class="muted">N/A</span>
+                    {% endif %}
+                </td>
+                <td>${{ "{:,.2f}".format(h.current_value) }}</td>
+                <td class="{{ 'positive' if h.unrealized_pnl >= 0 else 'negative' }}">
+                    ${{ "{:+,.2f}".format(h.unrealized_pnl) }}
+                </td>
+                <td class="{{ 'positive' if h.unrealized_pnl_pct >= 0 else 'negative' }}">
+                    {{ "{:+,.2f}".format(h.unrealized_pnl_pct) }}%
+                </td>
+                <td>{{ "{:,.2f}".format(h.weight) }}%</td>
+                <td>
+                    <button class="btn btn-sm btn-outline chart-btn"
+                            data-symbol="{{ h.asset_symbol }}"
+                            data-type="{{ summary.account.account_type }}"
+                            data-avg-cost="{{ h.avg_cost }}"
+                            data-name="{{ h.asset_name }}">
+                        View
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No holdings in this account yet. Add a buy transaction to get started.</p>
+</div>
+{% endif %}
+
+<!-- Asset Chart Modal -->
+<div id="assetChartModal" class="modal hidden">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="assetChartTitle">Price History</h3>
+            <button class="modal-close" id="closeModal">&times;</button>
+        </div>
+        <div class="period-selector">
+            <button class="period-btn active" data-period="1W">1W</button>
+            <button class="period-btn" data-period="1M">1M</button>
+            <button class="period-btn" data-period="3M">3M</button>
+            <button class="period-btn" data-period="1Y">1Y</button>
+        </div>
+        <canvas id="assetChart" height="120"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sort.js') }}"></script>
+{% endblock %}
