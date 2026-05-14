@@ -7,8 +7,18 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------------------------
     // Portfolio Value Over Time Chart (dashboard only)
     // ---------------------------------------------------------------
-    var portfolioCanvas = document.getElementById('portfolioChart');
-    if (portfolioCanvas) {
+    var portfolioChartInstance = null;
+
+    window.loadPortfolioChart = function () {
+        var portfolioCanvas = document.getElementById('portfolioChart');
+        if (!portfolioCanvas) return;
+
+        // Destroy existing chart before re-rendering
+        if (portfolioChartInstance) {
+            portfolioChartInstance.destroy();
+            portfolioChartInstance = null;
+        }
+
         fetch('/api/portfolio_history')
             .then(function (res) { return res.json(); })
             .then(function (data) {
@@ -19,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 var labels = data.map(function (d) { return d.date; });
                 var values = data.map(function (d) { return d.value; });
 
-                new Chart(portfolioCanvas, {
+                portfolioChartInstance = new Chart(portfolioCanvas, {
                     type: 'line',
                     data: {
                         labels: labels,
@@ -66,7 +76,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(function (err) {
                 console.error('Portfolio chart error:', err);
             });
-    }
+    };
+
+    // Auto-load chart on page load
+    window.loadPortfolioChart();
 
     // ---------------------------------------------------------------
     // Per-Asset Price History Modal

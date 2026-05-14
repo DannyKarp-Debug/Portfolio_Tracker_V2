@@ -2,21 +2,35 @@
 
 {% block title %}{{ summary.account.name }} — Portfolio Tracker{% endblock %}
 
+{% block head_extra %}<meta name="last-tx-ts" content="{{ last_tx_ts }}">{% endblock %}
+
 {% block content %}
-<div class="page-header">
-    <h1>
-        {{ summary.account.name }}
-        <span class="badge badge-{{ summary.account.account_type }}">{{ summary.account.account_type | upper }}</span>
-    </h1>
-    <a href="{{ url_for('transactions.create_transaction') }}?account_id={{ summary.account.id }}"
-       class="btn btn-primary">+ Add Transaction</a>
+<div class="page-header" data-account-id="{{ summary.account.id }}" data-account-type="{{ summary.account.account_type }}">
+    <div>
+        <h1>
+            {{ summary.account.name }}
+            <span class="badge badge-{{ summary.account.account_type }}">{{ summary.account.account_type | upper }}</span>
+        </h1>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+        <button id="refreshPricesBtn" class="btn btn-outline btn-sm">🔄 Refresh / Recalculate</button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('renameModal').classList.remove('hidden')">✏️ Rename</button>
+        <form method="POST" action="{{ url_for('accounts.delete_account', account_id=summary.account.id) }}"
+              onsubmit="return confirm('Delete account ' + {{ summary.account.name | tojson }} + ' and ALL its transactions? This cannot be undone.')">
+            <button type="submit" class="btn btn-sm btn-danger">🗑 Delete Account</button>
+        </form>
+        <a href="{{ url_for('transactions.create_transaction') }}?account_id={{ summary.account.id }}"
+           class="btn btn-primary btn-sm">+ Add Transaction</a>
+    </div>
 </div>
+
+<span id="price-status-bar" class="price-status-loading">Fetching live prices…</span>
 
 <!-- Account Summary Cards -->
 <div class="summary-cards">
     <div class="card">
         <div class="card-label">Total Value</div>
-        <div class="card-value">${{ "{:,.2f}".format(summary.total_value) }}</div>
+        <div class="card-value price-placeholder" id="dash-total-value">—</div>
     </div>
     <div class="card">
         <div class="card-label">Total Invested</div>
@@ -28,9 +42,7 @@
     </div>
     <div class="card">
         <div class="card-label">P&amp;L</div>
-        <div class="card-value {{ 'positive' if summary.total_pnl >= 0 else 'negative' }}">
-            ${{ "{:+,.2f}".format(summary.total_pnl) }} ({{ "{:+,.2f}".format(summary.total_pnl_pct) }}%)
-        </div>
+        <div class="card-value price-placeholder" id="dash-total-pnl">—</div>
     </div>
 </div>
 
@@ -55,26 +67,16 @@
         </thead>
         <tbody>
             {% for h in summary.holdings %}
-            <tr>
+            <tr data-holding-symbol="{{ h.asset_symbol }}">
                 <td>{{ h.asset_name }}</td>
                 <td class="symbol">{{ h.asset_symbol | upper }}</td>
                 <td>{{ h.quantity }}</td>
                 <td>${{ "{:,.4f}".format(h.avg_cost) }}</td>
-                <td>
-                    {% if h.current_price is not none %}
-                    ${{ "{:,.4f}".format(h.current_price) }}
-                    {% else %}
-                    <span class="muted">N/A</span>
-                    {% endif %}
-                </td>
-                <td>${{ "{:,.2f}".format(h.current_value) }}</td>
-                <td class="{{ 'positive' if h.unrealized_pnl >= 0 else 'negative' }}">
-                    ${{ "{:+,.2f}".format(h.unrealized_pnl) }}
-                </td>
-                <td class="{{ 'positive' if h.unrealized_pnl_pct >= 0 else 'negative' }}">
-                    {{ "{:+,.2f}".format(h.unrealized_pnl_pct) }}%
-                </td>
-                <td>{{ "{:,.2f}".format(h.weight) }}%</td>
+                <td class="price-placeholder" data-field="current_price">—</td>
+                <td class="price-placeholder" data-field="current_value">—</td>
+                <td class="price-placeholder" data-field="unrealized_pnl">—</td>
+                <td class="price-placeholder" data-field="unrealized_pnl_pct">—</td>
+                <td class="price-placeholder" data-field="weight">—</td>
                 <td>
                     <button class="btn btn-sm btn-outline chart-btn"
                             data-symbol="{{ h.asset_symbol }}"
@@ -111,9 +113,30 @@
         <canvas id="assetChart" height="120"></canvas>
     </div>
 </div>
+
+<!-- Rename Account Modal -->
+<div id="renameModal" class="modal hidden">
+    <div class="modal-content" style="max-width:420px;">
+        <div class="modal-header">
+            <h3>Rename Account</h3>
+            <button class="modal-close" onclick="document.getElementById('renameModal').classList.add('hidden')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('accounts.rename_account', account_id=summary.account.id) }}">
+            <div class="form-group" style="margin-top:0.5rem;">
+                <label for="renameInput">New name</label>
+                <input type="text" id="renameInput" name="name" value="{{ summary.account.name }}" maxlength="120" required autofocus>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Rename</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('renameModal').classList.add('hidden')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/prices.js') }}"></script>
 <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sort.js') }}"></script>
 {% endblock %}

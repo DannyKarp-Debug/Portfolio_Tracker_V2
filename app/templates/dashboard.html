@@ -2,14 +2,24 @@
 
 {% block title %}Dashboard — Portfolio Tracker{% endblock %}
 
+{% block head_extra %}<meta name="last-tx-ts" content="{{ dashboard.last_tx_ts }}">{% endblock %}
+
 {% block content %}
-<h1>Portfolio Dashboard</h1>
+<div id="dashboardPricesContainer">
+
+<div class="page-header">
+    <h1>Portfolio Dashboard</h1>
+    <div class="refresh-bar">
+        <button id="refreshPricesBtn" class="btn btn-outline btn-sm">🔄 Refresh / Recalculate</button>
+        <span id="price-status-bar" class="price-status-loading">Fetching live prices…</span>
+    </div>
+</div>
 
 <!-- Summary Cards -->
 <div class="summary-cards">
     <div class="card">
         <div class="card-label">Total Value</div>
-        <div class="card-value">${{ "{:,.2f}".format(dashboard.total_value) }}</div>
+        <div class="card-value price-placeholder" id="dash-total-value">—</div>
     </div>
     <div class="card">
         <div class="card-label">Total Invested</div>
@@ -17,15 +27,11 @@
     </div>
     <div class="card">
         <div class="card-label">Total P&amp;L</div>
-        <div class="card-value {{ 'positive' if dashboard.total_pnl >= 0 else 'negative' }}">
-            ${{ "{:,.2f}".format(dashboard.total_pnl) }}
-        </div>
+        <div class="card-value price-placeholder" id="dash-total-pnl">—</div>
     </div>
     <div class="card">
         <div class="card-label">Total P&amp;L %</div>
-        <div class="card-value {{ 'positive' if dashboard.total_pnl_pct >= 0 else 'negative' }}">
-            {{ "{:,.2f}".format(dashboard.total_pnl_pct) }}%
-        </div>
+        <div class="card-value price-placeholder" id="dash-total-pnl-pct">—</div>
     </div>
 </div>
 
@@ -37,31 +43,13 @@
 
 <!-- Best & Worst Investments -->
 <div class="best-worst-section">
-    <div class="bw-card best">
+    <div class="bw-card best" id="best-investment-section">
         <h3>Best Investment</h3>
-        {% if dashboard.best_investment %}
-        <div class="bw-symbol">{{ dashboard.best_investment.asset_symbol | upper }}</div>
-        <div class="bw-name">{{ dashboard.best_investment.asset_name }}</div>
-        <div class="bw-return positive">
-            {{ "{:+,.2f}".format(dashboard.best_investment.unrealized_pnl_pct) }}%
-            (${{ "{:+,.2f}".format(dashboard.best_investment.unrealized_pnl) }})
-        </div>
-        {% else %}
-        <div class="bw-empty">No positions yet</div>
-        {% endif %}
+        <div class="price-placeholder bw-empty">Loading prices…</div>
     </div>
-    <div class="bw-card worst">
+    <div class="bw-card worst" id="worst-investment-section">
         <h3>Worst Investment</h3>
-        {% if dashboard.worst_investment %}
-        <div class="bw-symbol">{{ dashboard.worst_investment.asset_symbol | upper }}</div>
-        <div class="bw-name">{{ dashboard.worst_investment.asset_name }}</div>
-        <div class="bw-return negative">
-            {{ "{:+,.2f}".format(dashboard.worst_investment.unrealized_pnl_pct) }}%
-            (${{ "{:+,.2f}".format(dashboard.worst_investment.unrealized_pnl) }})
-        </div>
-        {% else %}
-        <div class="bw-empty">No positions yet</div>
-        {% endif %}
+        <div class="price-placeholder bw-empty">Loading prices…</div>
     </div>
 </div>
 
@@ -86,26 +74,16 @@
         </thead>
         <tbody>
             {% for h in dashboard.all_holdings %}
-            <tr>
+            <tr data-holding-account="{{ h.account_id }}" data-holding-symbol="{{ h.asset_symbol }}">
                 <td>{{ h.asset_name }}</td>
                 <td class="symbol">{{ h.asset_symbol | upper }}</td>
                 <td>{{ h.quantity }}</td>
                 <td>${{ "{:,.4f}".format(h.avg_cost) }}</td>
-                <td>
-                    {% if h.current_price is not none %}
-                    ${{ "{:,.4f}".format(h.current_price) }}
-                    {% else %}
-                    <span class="muted">N/A</span>
-                    {% endif %}
-                </td>
-                <td>${{ "{:,.2f}".format(h.current_value) }}</td>
-                <td class="{{ 'positive' if h.unrealized_pnl >= 0 else 'negative' }}">
-                    ${{ "{:+,.2f}".format(h.unrealized_pnl) }}
-                </td>
-                <td class="{{ 'positive' if h.unrealized_pnl_pct >= 0 else 'negative' }}">
-                    {{ "{:+,.2f}".format(h.unrealized_pnl_pct) }}%
-                </td>
-                <td>{{ "{:,.2f}".format(h.weight) }}%</td>
+                <td class="price-placeholder" data-field="current_price">—</td>
+                <td class="price-placeholder" data-field="current_value">—</td>
+                <td class="price-placeholder" data-field="unrealized_pnl">—</td>
+                <td class="price-placeholder" data-field="unrealized_pnl_pct">—</td>
+                <td class="price-placeholder" data-field="weight">—</td>
                 <td>
                     <button class="btn btn-sm btn-outline chart-btn"
                             data-symbol="{{ h.asset_symbol }}"
@@ -124,7 +102,7 @@
 
 <!-- Per-account summaries -->
 {% for s in dashboard.accounts %}
-<div class="account-summary-card">
+<div class="account-summary-card" data-account-id="{{ s.account.id }}">
     <h3>
         <a href="{{ url_for('accounts.account_detail', account_id=s.account.id) }}">
             {{ s.account.name }}
@@ -132,14 +110,15 @@
         <span class="badge badge-{{ s.account.account_type }}">{{ s.account.account_type | upper }}</span>
     </h3>
     <div class="account-stats">
-        <span>Value: ${{ "{:,.2f}".format(s.total_value) }}</span>
+        <span>Invested: ${{ "{:,.2f}".format(s.total_invested) }}</span>
         <span>Cash: ${{ "{:,.2f}".format(s.cash_balance) }}</span>
-        <span class="{{ 'positive' if s.total_pnl >= 0 else 'negative' }}">
-            P&amp;L: ${{ "{:+,.2f}".format(s.total_pnl) }} ({{ "{:+,.2f}".format(s.total_pnl_pct) }}%)
-        </span>
+        <span>Value: <span data-acct-value class="price-placeholder">—</span></span>
+        <span class="price-placeholder"><span data-acct-pnl>—</span></span>
     </div>
 </div>
 {% endfor %}
+
+</div>{# end dashboardPricesContainer #}
 
 <!-- Asset Chart Modal -->
 <div id="assetChartModal" class="modal hidden">
@@ -160,6 +139,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/prices.js') }}"></script>
 <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sort.js') }}"></script>
 {% endblock %}

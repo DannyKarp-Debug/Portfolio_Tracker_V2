@@ -19,8 +19,14 @@
         <div class="account-card-body">
             <p class="muted">Created {{ acct.created_at.strftime('%b %d, %Y') if acct.created_at else 'N/A' }}</p>
         </div>
-        <div class="account-card-footer">
+        <div class="account-card-footer" style="gap:0.5rem;flex-wrap:wrap;">
             <a href="{{ url_for('accounts.account_detail', account_id=acct.id) }}" class="btn btn-sm btn-outline">View Details</a>
+            <button class="btn btn-sm btn-outline"
+                    onclick="openRenameModal({{ acct.id }}, '{{ acct.name | replace("'", "\\'") }}')">✏️ Rename</button>
+            <form method="POST" action="{{ url_for('accounts.delete_account', account_id=acct.id) }}" style="display:inline"
+                  onsubmit="return confirm('Delete account ' + {{ acct.name | tojson }} + ' and ALL its transactions? This cannot be undone.')">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 Delete</button>
+            </form>
         </div>
     </div>
     {% endfor %}
@@ -31,4 +37,36 @@
     <a href="{{ url_for('accounts.create_account') }}" class="btn btn-primary">+ Create Account</a>
 </div>
 {% endif %}
+
+<!-- Rename Account Modal (shared, populated via JS) -->
+<div id="renameModal" class="modal hidden">
+    <div class="modal-content" style="max-width:420px;">
+        <div class="modal-header">
+            <h3>Rename Account</h3>
+            <button class="modal-close" onclick="document.getElementById('renameModal').classList.add('hidden')">&times;</button>
+        </div>
+        <form id="renameForm" method="POST">
+            <div class="form-group" style="margin-top:0.5rem;">
+                <label for="renameInput">New name</label>
+                <input type="text" id="renameInput" name="name" maxlength="120" required autofocus>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Rename</button>
+                <button type="button" class="btn btn-outline"
+                        onclick="document.getElementById('renameModal').classList.add('hidden')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openRenameModal(accountId, currentName) {
+    document.getElementById('renameForm').action = '/accounts/' + accountId + '/rename';
+    document.getElementById('renameInput').value = currentName;
+    document.getElementById('renameModal').classList.remove('hidden');
+    document.getElementById('renameInput').focus();
+}
+</script>
 {% endblock %}

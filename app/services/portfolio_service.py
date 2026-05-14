@@ -93,7 +93,9 @@ def compute_holdings_for_account(account_id: int) -> list[dict]:
     return result
 
 
-def enrich_holdings_with_prices(holdings: list[dict], account_type: str) -> list[dict]:
+def enrich_holdings_with_prices(
+    holdings: list[dict], account_type: str, skip_prices: bool = False
+) -> list[dict]:
     """
     Attach current market prices and P&L calculations to holdings.
 
@@ -103,11 +105,23 @@ def enrich_holdings_with_prices(holdings: list[dict], account_type: str) -> list
     Args:
         holdings: List of holding dicts from compute_holdings_for_account.
         account_type: 'crypto' or 'stock'.
+        skip_prices: If True, skip live price fetching and set price fields
+            to None/0. The frontend is responsible for loading prices lazily.
 
     Returns:
         The same list with additional keys: current_price, current_value,
         unrealized_pnl, unrealized_pnl_pct, account_type, weight.
     """
+    if skip_prices:
+        for h in holdings:
+            h["account_type"] = account_type
+            h["current_price"] = None
+            h["current_value"] = 0.0
+            h["unrealized_pnl"] = 0.0
+            h["unrealized_pnl_pct"] = 0.0
+            h["weight"] = 0.0
+        return holdings
+
     symbols = [h["asset_symbol"] for h in holdings if h["quantity"] > 0]
 
     if account_type == "crypto":
@@ -177,16 +191,18 @@ def compute_cash_balance(account_id: int) -> float:
     return round(cash, 2)
 
 
-def get_account_summary(account_id: int) -> dict:
+def get_account_summary(account_id: int, skip_prices: bool = False) -> dict:
     """
     Build a full summary for one account: holdings, cash, totals.
 
     Args:
         account_id: The account to summarize.
+        skip_prices: If True, skip live price fetching for fast page renders.
+            Price fields will be None/0; the frontend loads them lazily.
 
     Returns:
         Dict with keys: account, holdings, cash_balance,
-        total_value, total_invested, total_pnl, total_pnl_pct.
+        total_value, total_invested, total_pnl, total_pnl_pct, prices_loaded.
     """
     from app import db as _db
     account = _db.session.get(Account, account_id)
@@ -194,13 +210,19 @@ def get_account_summary(account_id: int) -> dict:
         return {}
 
     holdings = compute_holdings_for_account(account_id)
-    holdings = enrich_holdings_with_prices(holdings, account.account_type)
+    holdings = enrich_holdings_with_prices(holdings, account.account_type, skip_prices=skip_prices)
     cash = compute_cash_balance(account_id)
 
-    total_value = sum(h["current_value"] for h in holdings) + cash
-    total_invested = _total_deposits(account_id)
-    total_pnl = total_value - total_invested
-    total_pnl_pct = round((total_pnl / total_invested) * 100, 2) if total_invested > 0 else 0.0
+    if skip_prices:
+        total_value = cash
+        total_invested = _total_deposits(account_id)
+        total_pnl = 0.0
+        total_pnl_pct = 0.0
+    else:
+        total_value = sum(h["current_value"] for h in holdings) + cash
+        total_invested = _total_deposits(account_id)
+        total_pnl = total_value - total_invested
+        total_pnl_pct = round((total_pnl / total_invested) * 100, 2) if total_invested > 0 else 0.0
 
     return {
         "account": account.to_dict(),
@@ -210,17 +232,22 @@ def get_account_summary(account_id: int) -> dict:
         "total_invested": round(total_invested, 2),
         "total_pnl": round(total_pnl, 2),
         "total_pnl_pct": round(total_pnl_pct, 2),
+        "prices_loaded": not skip_prices,
     }
 
 
-def get_combined_dashboard() -> dict:
+def get_combined_dashboard(skip_prices: bool = False) -> dict:
     """
     Build a unified dashboard combining all accounts.
+
+    Args:
+        skip_prices: If True, skip live price fetching for fast page renders.
+            Price fields will be None/0; the frontend loads them lazily.
 
     Returns:
         Dict with keys: accounts (list of summaries), total_value,
         total_invested, total_pnl, total_pnl_pct, all_holdings,
-        best_investment, worst_investment.
+        best_investment, worst_investment, prices_loaded.
     """
     accounts = Account.query.all()
     summaries = []
@@ -229,28 +256,40 @@ def get_combined_dashboard() -> dict:
     grand_total_invested = 0.0
 
     for acct in accounts:
-        summary = get_account_summary(acct.id)
+        summary = get_account_summary(acct.id, skip_prices=skip_prices)
         if summary:
             summaries.append(summary)
             grand_total_value += summary["total_value"]
             grand_total_invested += summary["total_invested"]
+            # Tag each holding with its account_id for JS DOM targeting
+            for h in summary["holdings"]:
+                h["account_id"] = acct.id
             all_holdings.extend(summary["holdings"])
 
-    grand_pnl = grand_total_value - grand_total_invested
-    grand_pnl_pct = (
-        round((grand_pnl / grand_total_invested) * 100, 2)
-        if grand_total_invested > 0
-        else 0.0
-    )
+    if skip_prices:
+        grand_pnl = 0.0
+        grand_pnl_pct = 0.0
+    else:
+        grand_pnl = grand_total_value - grand_total_invested
+        grand_pnl_pct = (
+            round((grand_pnl / grand_total_invested) * 100, 2)
+            if grand_total_invested > 0
+            else 0.0
+        )
 
     # Recompute weights against the grand total
     for h in all_holdings:
-        if grand_total_value > 0 and h["current_value"] > 0:
+        if grand_total_value > 0 and h.get("current_value", 0) > 0:
             h["weight"] = round((h["current_value"] / grand_total_value) * 100, 2)
         else:
             h["weight"] = 0.0
 
-    best, worst = _find_best_worst(all_holdings)
+    best, worst = _find_best_worst(all_holdings) if not skip_prices else (None, None)
+
+    # Embed latest transaction timestamp so the browser can detect stale cache
+    from app.models.transaction import Transaction as _Tx
+    latest_tx = _Tx.query.order_by(_Tx.timestamp.desc()).first()
+    last_tx_ts = latest_tx.timestamp.isoformat() if latest_tx else ""
 
     return {
         "accounts": summaries,
@@ -261,16 +300,19 @@ def get_combined_dashboard() -> dict:
         "all_holdings": all_holdings,
         "best_investment": best,
         "worst_investment": worst,
+        "prices_loaded": not skip_prices,
+        "last_tx_ts": last_tx_ts,
     }
 
 
 def get_portfolio_value_history(current_total: float | None = None) -> list[dict]:
     """
-    Build a time series of the portfolio's total value based on transactions.
+    Build a time series of capital deployed into the portfolio over time.
 
-    For each transaction date, compute the cumulative cash position.
-    The current real portfolio value (including asset appreciation) is
-    appended as today's data point.
+    Tracks cumulative net deposits (deposits minus withdrawals), giving a clean
+    staircase line that shows when money was added. The final data point is
+    replaced with the current real portfolio market value so the chart ends
+    at the live number.
 
     Args:
         current_total: Pre-computed current portfolio total value.
@@ -290,9 +332,6 @@ def get_portfolio_value_history(current_total: float | None = None) -> list[dict
                 _db.case(
                     (Transaction.tx_type == "deposit", Transaction.total_amount),
                     (Transaction.tx_type == "withdrawal", -Transaction.total_amount),
-                    (Transaction.tx_type == "buy", -Transaction.total_amount),
-                    (Transaction.tx_type == "sell", Transaction.total_amount),
-                    (Transaction.tx_type == "dividend", Transaction.total_amount),
                     else_=0,
                 )
             ).label("net"),

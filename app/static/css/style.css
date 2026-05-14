@@ -595,6 +595,51 @@ h3 { font-size: 1.1rem; }
     font-size: 1.05rem;
 }
 
+.btn-danger {
+    background: var(--red);
+    color: #fff;
+}
+.btn-danger:hover {
+    background: #dc2626;
+    color: #fff;
+}
+.btn-warning {
+    background: rgba(234, 179, 8, 0.15);
+    color: var(--yellow);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+}
+.btn-warning:hover {
+    background: rgba(234, 179, 8, 0.25);
+    color: var(--yellow);
+}
+
+/* --- Refresh Bar & Price Status --- */
+.refresh-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.price-status-loading {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.price-status-ok {
+    font-size: 0.8rem;
+    color: var(--green);
+}
+.price-status-error {
+    font-size: 0.8rem;
+    color: var(--red);
+}
+
+/* --- Price placeholder cells (loading state) --- */
+.price-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 /* --- Footer --- */
 .footer {
     text-align: center;

@@ -11,5 +11,5 @@ dashboard_bp = Blueprint("dashboard", __name__)
 @dashboard_bp.route("/")
 def index():
     """Render the main dashboard page with combined portfolio data."""
-    dashboard = get_combined_dashboard()
+    dashboard = get_combined_dashboard(skip_prices=True)
     return render_template("dashboard.html", dashboard=dashboard)
