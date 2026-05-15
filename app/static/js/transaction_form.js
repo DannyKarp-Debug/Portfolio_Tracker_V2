@@ -1,5 +1,5 @@
 /**
- * Portfolio Tracker — Transaction form dynamic field visibility.
+ * Portfolio Tracker -- Transaction form dynamic field visibility.
  * Shows/hides form fields based on selected transaction type.
  */
 
@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var assetFields = document.getElementById('assetFields');
     var qtyPriceFields = document.getElementById('qtyPriceFields');
     var amountField = document.getElementById('amountField');
+    var feeField = document.getElementById('feeField');
 
     if (!txTypeSelect) return;
 
@@ -18,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
         assetFields.classList.add('hidden');
         qtyPriceFields.classList.add('hidden');
         amountField.classList.add('hidden');
+        if (feeField) feeField.classList.add('hidden');
 
         // Remove required attributes
         var assetSymbol = document.getElementById('asset_symbol');
@@ -33,6 +35,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (type === 'buy' || type === 'sell') {
             assetFields.classList.remove('hidden');
             qtyPriceFields.classList.remove('hidden');
+            if (feeField) feeField.classList.remove('hidden');
             assetSymbol.setAttribute('required', '');
             quantity.setAttribute('required', '');
             pricePerUnit.setAttribute('required', '');

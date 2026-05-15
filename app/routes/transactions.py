@@ -1,5 +1,5 @@
 """
-Transaction routes — create, list, edit, and delete transactions.
+Transaction routes -- create, list, edit, and delete transactions.
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -50,6 +50,7 @@ def create_transaction():
             "asset_name": request.form.get("asset_name"),
             "quantity": request.form.get("quantity"),
             "price_per_unit": request.form.get("price_per_unit"),
+            "fee": request.form.get("fee"),
             "total_amount": request.form.get("total_amount"),
             "timestamp": request.form.get("timestamp"),
             "notes": request.form.get("notes"),
@@ -70,9 +71,11 @@ def create_transaction():
             quantity = float(data["quantity"])
             price_per_unit = float(data["price_per_unit"])
             total_amount = round(quantity * price_per_unit, 2)
+            fee = round(float(data.get("fee") or 0), 2)
         else:
             quantity = None
             price_per_unit = None
+            fee = 0.0
             total_amount = float(data["total_amount"])
 
         # Parse timestamp
@@ -100,6 +103,7 @@ def create_transaction():
             asset_name=asset_name,
             quantity=quantity,
             price_per_unit=price_per_unit,
+            fee=fee,
             total_amount=total_amount,
             timestamp=ts,
             notes=(data.get("notes") or "").strip() or None,
@@ -130,6 +134,7 @@ def edit_transaction(tx_id):
             "asset_name": request.form.get("asset_name"),
             "quantity": request.form.get("quantity"),
             "price_per_unit": request.form.get("price_per_unit"),
+            "fee": request.form.get("fee"),
             "total_amount": request.form.get("total_amount"),
             "timestamp": request.form.get("timestamp"),
             "notes": request.form.get("notes"),
@@ -149,9 +154,11 @@ def edit_transaction(tx_id):
             quantity = float(data["quantity"])
             price_per_unit = float(data["price_per_unit"])
             total_amount = round(quantity * price_per_unit, 2)
+            fee = round(float(data.get("fee") or 0), 2)
         else:
             quantity = None
             price_per_unit = None
+            fee = 0.0
             total_amount = float(data["total_amount"])
 
         ts_str = (data.get("timestamp") or "").strip()
@@ -176,6 +183,7 @@ def edit_transaction(tx_id):
         tx.asset_name = asset_name
         tx.quantity = quantity
         tx.price_per_unit = price_per_unit
+        tx.fee = fee
         tx.total_amount = total_amount
         tx.timestamp = ts
         tx.notes = (data.get("notes") or "").strip() or None
@@ -193,6 +201,7 @@ def edit_transaction(tx_id):
         "asset_name": tx.asset_name or "",
         "quantity": str(tx.quantity) if tx.quantity is not None else "",
         "price_per_unit": str(tx.price_per_unit) if tx.price_per_unit is not None else "",
+        "fee": str(tx.fee) if tx.fee else "",
         "total_amount": str(tx.total_amount) if tx.total_amount is not None else "",
         "timestamp": ts_str,
         "notes": tx.notes or "",

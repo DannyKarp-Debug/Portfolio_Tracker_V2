@@ -1,5 +1,5 @@
 /**
- * Portfolio Tracker — Lazy price loading with sessionStorage caching.
+ * Portfolio Tracker -- Lazy price loading with sessionStorage caching.
  *
  * Strategy:
  *   - Server renders pages without live prices (fast).
@@ -38,7 +38,7 @@
         try {
             data._cachedAt = Date.now();
             sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        } catch (e) { /* storage full — silently ignore */ }
+        } catch (e) { /* storage full -- silently ignore */ }
     }
 
     function clearCache() {
@@ -72,7 +72,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // DOM update — dashboard page
+    // DOM update -- dashboard page
     // -----------------------------------------------------------------------
 
     function applyPricesToDashboard(dashboard) {
@@ -114,7 +114,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // DOM update — account detail page
+    // DOM update -- account detail page
     // -----------------------------------------------------------------------
 
     function applyPricesToAccountDetail(dashboard, accountId) {
@@ -222,10 +222,10 @@
         var bar = document.getElementById('price-status-bar');
         if (btn) {
             btn.disabled = loading;
-            btn.textContent = loading ? '⏳ Loading…' : '🔄 Refresh / Recalculate';
+            btn.textContent = loading ? '\u23F3 Loading\u2026' : '\uD83D\uDD04 Refresh / Recalculate';
         }
         if (bar && loading) {
-            bar.textContent = 'Fetching live prices…';
+            bar.textContent = 'Fetching live prices\u2026';
             bar.className = 'price-status-loading';
         }
     }
@@ -234,17 +234,33 @@
     // Fetch and apply
     // -----------------------------------------------------------------------
 
+    function pricesActuallyLoaded(data) {
+        var holdings = data.all_holdings || [];
+        if (holdings.length === 0) return true; // no holdings -- nothing to fail
+        return holdings.some(function (h) { return parseFloat(h.current_value) > 0; });
+    }
+
     function fetchAndApply(applyFn) {
         setLoadingState(true);
         fetch('/api/dashboard_data')
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                setCachedData(data);
+                // Only cache if prices actually loaded -- do not persist a failure state
+                if (pricesActuallyLoaded(data)) {
+                    setCachedData(data);
+                }
                 applyFn(data);
                 setLoadingState(false);
                 // Reload the portfolio chart if available
                 if (typeof window.loadPortfolioChart === 'function') {
-                    window.loadPortfolioChart();
+                    window.loadPortfolioChart(data.total_value);
+                }
+                if (!pricesActuallyLoaded(data)) {
+                    var bar = document.getElementById('price-status-bar');
+                    if (bar) {
+                        bar.textContent = '\u26A0\uFE0F Prices unavailable -- click Refresh to retry';
+                        bar.className = 'price-status-error';
+                    }
                 }
             })
             .catch(function (err) {
@@ -252,7 +268,7 @@
                 setLoadingState(false);
                 var bar = document.getElementById('price-status-bar');
                 if (bar) {
-                    bar.textContent = 'Failed to load prices — click Refresh to retry';
+                    bar.textContent = 'Failed to load prices -- click Refresh to retry';
                     bar.className = 'price-status-error';
                 }
             });
@@ -279,6 +295,11 @@
         var cached = getCachedData(serverLastTxTs);
         if (cached) {
             applyFn(cached);
+            // Also render the chart from the cached total so it is loaded once,
+            // correctly, even on a cache-hit (no second fetch, no flicker).
+            if (isDashboard && typeof window.loadPortfolioChart === 'function') {
+                window.loadPortfolioChart(cached.total_value);
+            }
         } else {
             fetchAndApply(applyFn);
         }
@@ -296,4 +317,3 @@
     // Expose for debugging
     window.PortfolioPrices = { clearCache: clearCache };
 }());
-

@@ -1,5 +1,5 @@
 /**
- * Portfolio Tracker — Chart rendering with Chart.js.
+ * Portfolio Tracker -- Chart rendering with Chart.js.
  * Handles the portfolio value over time chart and per-asset price history modal.
  */
 
@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------------------------
     var portfolioChartInstance = null;
 
-    window.loadPortfolioChart = function () {
+    window.loadPortfolioChart = function (currentValue) {
         var portfolioCanvas = document.getElementById('portfolioChart');
         if (!portfolioCanvas) return;
 
@@ -19,11 +19,16 @@ document.addEventListener('DOMContentLoaded', function () {
             portfolioChartInstance = null;
         }
 
-        fetch('/api/portfolio_history')
+        var url = '/api/portfolio_history';
+        if (currentValue != null) {
+            url += '?current_value=' + encodeURIComponent(currentValue);
+        }
+
+        fetch(url)
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (!data || data.length === 0) {
-                    portfolioCanvas.parentElement.innerHTML += '<p class="muted" style="text-align:center;margin-top:1rem;">No data yet — add transactions to see your portfolio chart.</p>';
+                    portfolioCanvas.parentElement.innerHTML += '<p class="muted" style="text-align:center;margin-top:1rem;">No data yet -- add transactions to see your portfolio chart.</p>';
                     return;
                 }
                 var labels = data.map(function (d) { return d.date; });
@@ -78,8 +83,10 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     };
 
-    // Auto-load chart on page load
-    window.loadPortfolioChart();
+    // Chart is intentionally NOT auto-loaded here.
+    // prices.js triggers loadPortfolioChart(total_value) once live prices are
+    // available (from cache or a fresh fetch), ensuring the final chart point
+    // always matches the correct live total -- no double-render, no race.
 
     // ---------------------------------------------------------------
     // Per-Asset Price History Modal
@@ -210,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var name = btn.getAttribute('data-name') || currentSymbol;
         currentPeriod = '1M';
 
-        titleEl.textContent = name + ' (' + currentSymbol.toUpperCase() + ') — Price History';
+        titleEl.textContent = name + ' (' + currentSymbol.toUpperCase() + ') -- Price History';
         modal.classList.remove('hidden');
 
         // Reset period buttons

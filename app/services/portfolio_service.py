@@ -2,7 +2,7 @@
 Portfolio calculation service.
 
 Computes holdings, P&L, cost basis, portfolio weights, and best/worst
-investments from raw transaction data. All business logic lives here —
+investments from raw transaction data. All business logic lives here --
 route handlers should only call these functions.
 """
 
@@ -58,7 +58,8 @@ def compute_holdings_for_account(account_id: int) -> list[dict]:
         if tx.tx_type == "buy":
             qty = tx.quantity or 0.0
             cost = tx.total_amount or 0.0
-            h["total_cost"] += cost
+            fee = tx.fee or 0.0
+            h["total_cost"] += cost + fee
             h["quantity"] += qty
 
         elif tx.tx_type == "sell":
@@ -183,9 +184,9 @@ def compute_cash_balance(account_id: int) -> float:
         elif tx.tx_type == "withdrawal":
             cash -= tx.total_amount or 0.0
         elif tx.tx_type == "buy":
-            cash -= tx.total_amount or 0.0
+            cash -= (tx.total_amount or 0.0) + (tx.fee or 0.0)
         elif tx.tx_type == "sell":
-            cash += tx.total_amount or 0.0
+            cash += (tx.total_amount or 0.0) - (tx.fee or 0.0)
         elif tx.tx_type == "dividend":
             cash += tx.total_amount or 0.0
     return round(cash, 2)
@@ -310,13 +311,17 @@ def get_portfolio_value_history(current_total: float | None = None) -> list[dict
     Build a time series of capital deployed into the portfolio over time.
 
     Tracks cumulative net deposits (deposits minus withdrawals), giving a clean
-    staircase line that shows when money was added. The final data point is
-    replaced with the current real portfolio market value so the chart ends
-    at the live number.
+    staircase line that shows when money was added. When current_total is
+    explicitly provided (by the frontend after it has live prices), today's
+    final point is replaced with the real market value. When not provided the
+    series ends at the last cumulative deposit figure -- no live price fetch is
+    performed, avoiding incorrect "cash-only" values that would make the chart
+    plummet.
 
     Args:
-        current_total: Pre-computed current portfolio total value.
-            If None, fetches it via get_combined_dashboard().
+        current_total: Pre-computed current portfolio total value. Pass this
+            from the frontend once live prices are known. When None the series
+            simply ends at the most recent deposit-based cumulative value.
 
     Returns:
         List of dicts with 'date' and 'value' keys, sorted chronologically.
@@ -347,16 +352,15 @@ def get_portfolio_value_history(current_total: float | None = None) -> list[dict
         cumulative += float(net)
         series.append({"date": str(day), "value": round(cumulative, 2)})
 
-    # Append current real value as today's data point
-    if current_total is None:
-        dashboard = get_combined_dashboard()
-        current_total = dashboard["total_value"]
-
-    today = date.today().isoformat()
-    if series and series[-1]["date"] == today:
-        series[-1]["value"] = current_total
-    else:
-        series.append({"date": today, "value": current_total})
+    # Only update the final point with the real market value when the caller
+    # supplies it. This avoids an independent price fetch here that could
+    # return a cash-only figure if the market data call fails.
+    if current_total is not None:
+        today = date.today().isoformat()
+        if series and series[-1]["date"] == today:
+            series[-1]["value"] = current_total
+        else:
+            series.append({"date": today, "value": current_total})
 
     return series
 
@@ -387,7 +391,7 @@ def _total_deposits(account_id: int) -> float:
 
 def _find_best_worst(holdings: list[dict]) -> tuple[dict | None, dict | None]:
     """
-    Find the best and worst performing investments by total return %.
+    Find the best and worst performing investments by total return pct.
 
     Combines realized P&L (from sells) and unrealized P&L (from current
     market value vs cost basis) to determine a total return percentage.
