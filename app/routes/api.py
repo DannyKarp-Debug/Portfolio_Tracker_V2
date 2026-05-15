@@ -1,5 +1,5 @@
 """
-JSON API routes — used by the frontend JavaScript for charts and live data.
+JSON API routes -- used by the frontend JavaScript for charts and live data.
 """
 
 from flask import Blueprint, jsonify, request
@@ -44,10 +44,17 @@ def portfolio_history():
     """
     Return portfolio value over time series for the main chart.
 
+    Query params:
+        current_value (optional float): The already-computed live portfolio
+            total value. When supplied the last chart point is replaced with
+            this real market value. When omitted the series ends at the last
+            cumulative deposit figure (safe default -- no price fetch needed).
+
     Returns:
         JSON list of {date, value} objects.
     """
-    series = get_portfolio_value_history()
+    current_value = request.args.get("current_value", type=float)
+    series = get_portfolio_value_history(current_total=current_value)
     return jsonify(series)
 
 

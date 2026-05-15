@@ -1,5 +1,5 @@
 """
-Transaction model — represents a single financial transaction in an account.
+Transaction model -- represents a single financial transaction in an account.
 """
 
 from datetime import datetime, timezone
@@ -41,6 +41,7 @@ class Transaction(db.Model):
     asset_name = db.Column(db.String(120), nullable=True)
     quantity = db.Column(db.Float, nullable=True)
     price_per_unit = db.Column(db.Float, nullable=True)
+    fee = db.Column(db.Float, nullable=True, default=0.0)
     total_amount = db.Column(db.Float, nullable=False, default=0.0)
     timestamp = db.Column(
         db.DateTime,
@@ -62,6 +63,7 @@ class Transaction(db.Model):
             "asset_name": self.asset_name,
             "quantity": self.quantity,
             "price_per_unit": self.price_per_unit,
+            "fee": self.fee or 0.0,
             "total_amount": self.total_amount,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "notes": self.notes,

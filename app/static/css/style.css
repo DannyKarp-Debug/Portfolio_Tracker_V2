@@ -1,5 +1,5 @@
 /* ===================================================================
-   Portfolio Tracker — Main Stylesheet
+   Portfolio Tracker -- Main Stylesheet
    =================================================================== */
 
 /* --- Reset & Base --- */
@@ -204,6 +204,9 @@ h3 { font-size: 1.1rem; }
 .negative { color: var(--red) !important; }
 .muted { color: var(--text-muted); }
 
+/* --- Available to Invest highlight --- */
+.available-to-invest { color: var(--primary) !important; }
+
 /* --- Chart Section --- */
 .chart-section {
     background: var(--bg-card);
@@ -301,11 +304,11 @@ h3 { font-size: 1.1rem; }
 }
 
 .holdings-table th.sort-asc::after {
-    content: ' ▲';
+    content: ' \25b2';
     font-size: 0.65rem;
 }
 .holdings-table th.sort-desc::after {
-    content: ' ▼';
+    content: ' \25bc';
     font-size: 0.65rem;
 }
 

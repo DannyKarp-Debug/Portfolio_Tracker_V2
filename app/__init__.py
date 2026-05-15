@@ -37,5 +37,18 @@ def create_app(config_class=Config):
     with app.app_context():
         from app.models import account, transaction
         db.create_all()
+        _migrate_add_fee_column(app)
 
     return app
+
+
+def _migrate_add_fee_column(app):
+    """Add the 'fee' column to transactions if it doesn't exist yet."""
+    from sqlalchemy import text, inspect
+    with app.app_context():
+        inspector = inspect(db.engine)
+        cols = [c["name"] for c in inspector.get_columns("transactions")]
+        if "fee" not in cols:
+            with db.engine.connect() as conn:
+                conn.execute(text("ALTER TABLE transactions ADD COLUMN fee FLOAT DEFAULT 0.0"))
+                conn.commit()
