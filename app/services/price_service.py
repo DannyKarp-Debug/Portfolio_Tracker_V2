@@ -10,6 +10,7 @@ and registering it in the dispatcher dictionaries at the bottom.
 
 from datetime import datetime, timezone
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import yfinance as yf
 from config import Config
@@ -18,6 +19,20 @@ from config import Config
 # Maximum retry attempts for rate-limited yfinance requests
 _YF_MAX_RETRIES = 3
 _YF_RETRY_DELAY = 1  # seconds, doubles each attempt
+
+_DEFAULT_TIMEOUT = Config.PRICE_REQUEST_TIMEOUT_SECONDS
+_PRICE_CACHE_TTL = Config.PRICE_CACHE_TTL_SECONDS
+_FINNHUB_KEY = Config.FINNHUB_API_KEY
+_FINNHUB_BASE = "https://finnhub.io/api/v1"
+_YAHOO_CHART_BASE = "https://query2.finance.yahoo.com/v8/finance/chart"
+_STOOQ_BASE = "https://stooq.com/q/l/"
+_MAX_BULK_WORKERS = 8
+_price_cache: dict[str, tuple[float, float]] = {}
+_DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json,text/csv,*/*",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -38,28 +53,17 @@ def fetch_stock_price(symbol: str) -> float | None:
         Current price as a float, or None if unavailable.
     """
     symbol = symbol.upper()
-    delay = _YF_RETRY_DELAY
-    for attempt in range(_YF_MAX_RETRIES):
-        try:
-            ticker = yf.Ticker(symbol)
-            try:
-                info = ticker.fast_info
-                price = getattr(info, "last_price", None)
-            except Exception:
-                price = None
-            if price is None:
-                hist = ticker.history(period="5d")
-                if not hist.empty:
-                    price = float(hist["Close"].iloc[-1])
-            if price:
-                return float(price)
-        except Exception as exc:
-            if "rate" in str(exc).lower() and attempt < _YF_MAX_RETRIES - 1:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            return None
-    return None
+    cache_key = f"stock:{symbol}"
+    cached_price = _cache_get(cache_key)
+    if cached_price is not None:
+        return cached_price
+
+    price = _fetch_stock_price_no_cache(symbol)
+    if price is not None:
+        _cache_set(cache_key, price)
+        return price
+
+    return _cache_get(cache_key, allow_stale=True)
 
 
 def fetch_stock_history(symbol: str, period: str = "1mo") -> list[dict]:
@@ -97,6 +101,151 @@ def fetch_stock_history(symbol: str, period: str = "1mo") -> list[dict]:
                 continue
             return []
     return []
+
+
+def _cache_get(key: str, allow_stale: bool = False) -> float | None:
+    cached = _price_cache.get(key)
+    if not cached:
+        return None
+    price, ts = cached
+    if allow_stale or (time.time() - ts) <= _PRICE_CACHE_TTL:
+        return float(price)
+    return None
+
+
+def _cache_set(key: str, price: float) -> None:
+    _price_cache[key] = (float(price), time.time())
+
+
+def _normalize_stock_symbol(symbol: str) -> str:
+    return symbol.strip().upper()
+
+
+def _to_stooq_symbol(symbol: str) -> str:
+    s = symbol.strip().lower()
+    known_exchange_suffixes = {
+        "us", "de", "uk", "pl", "to", "v", "ax", "hk", "jp", "fr", "it", "es",
+    }
+    if "." not in s:
+        return f"{s}.us"
+    _, right = s.rsplit(".", 1)
+    if right in known_exchange_suffixes:
+        return s
+    return f"{s.replace('.', '-')}.us"
+
+
+def _fetch_stock_price_no_cache(symbol: str) -> float | None:
+    for fetcher in (
+        _fetch_stock_price_finnhub,
+        _fetch_stock_price_stooq,
+        _fetch_stock_price_yahoo_chart,
+        _fetch_stock_price_yfinance,
+    ):
+        price = fetcher(symbol)
+        if price is not None:
+            return price
+    return None
+
+
+def _fetch_stock_price_finnhub(symbol: str) -> float | None:
+    if not _FINNHUB_KEY:
+        return None
+    try:
+        resp = requests.get(
+            f"{_FINNHUB_BASE}/quote",
+            params={"symbol": symbol, "token": _FINNHUB_KEY},
+            headers=_DEFAULT_HEADERS,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Finnhub's "c" is current price.
+        price = data.get("c")
+        if price is None:
+            return None
+        price_f = float(price)
+        return price_f if price_f > 0 else None
+    except Exception:
+        return None
+
+
+def _fetch_stock_price_stooq(symbol: str) -> float | None:
+    try:
+        resp = requests.get(
+            _STOOQ_BASE,
+            params={"s": _to_stooq_symbol(symbol), "i": "d"},
+            headers=_DEFAULT_HEADERS,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        rows = [line.strip() for line in resp.text.splitlines() if line.strip()]
+        if len(rows) < 2:
+            return None
+        values = [part.strip() for part in rows[1].split(",")]
+        if len(values) < 7:
+            return None
+        close = values[6]
+        if not close or close.lower() in {"n/d", "null"}:
+            return None
+        price = float(close)
+        return price if price > 0 else None
+    except Exception:
+        return None
+
+
+def _fetch_stock_price_yahoo_chart(symbol: str) -> float | None:
+    try:
+        resp = requests.get(
+            f"{_YAHOO_CHART_BASE}/{symbol}",
+            params={"range": "5d", "interval": "1d"},
+            headers=_DEFAULT_HEADERS,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        results = payload.get("chart", {}).get("result", [])
+        if not results:
+            return None
+        closes = (
+            results[0]
+            .get("indicators", {})
+            .get("quote", [{}])[0]
+            .get("close", [])
+        )
+        for value in reversed(closes):
+            if value is None:
+                 continue
+            price = float(value)
+            if price > 0:
+                return price
+        return None
+    except Exception:
+        return None
+
+
+def _fetch_stock_price_yfinance(symbol: str) -> float | None:
+    delay = _YF_RETRY_DELAY
+    for attempt in range(_YF_MAX_RETRIES):
+        try:
+            ticker = yf.Ticker(symbol)
+            try:
+                info = ticker.fast_info
+                price = getattr(info, "last_price", None)
+            except Exception:
+                price = None
+            if price is None:
+                hist = ticker.history(period="5d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+            if price:
+                return float(price)
+        except Exception as exc:
+            if "rate" in str(exc).lower() and attempt < _YF_MAX_RETRIES - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -344,42 +493,52 @@ def fetch_bulk_stock_prices(symbols: list[str]) -> dict[str, float]:
     if not symbols:
         return {}
 
-    # Map uppercase ticker -> original symbol (preserves caller casing)
-    sym_map = {s.upper(): s for s in symbols}
-    upper_syms = list(sym_map.keys())
+    normalized_to_original: dict[str, str] = {}
+    for original in symbols:
+        normalized = _normalize_stock_symbol(original)
+        if normalized:
+            normalized_to_original[normalized] = original
 
-    try:
-        if len(upper_syms) == 1:
-            df = yf.download(
-                upper_syms[0], period="5d", auto_adjust=True,
-                progress=False, multi_level_index=False,
-            )
-            if df.empty:
-                return _fetch_bulk_stock_prices_fallback(symbols)
-            close = df["Close"].dropna()
-            if close.empty:
-                return _fetch_bulk_stock_prices_fallback(symbols)
-            return {sym_map[upper_syms[0]]: float(close.iloc[-1])}
+    if not normalized_to_original:
+        return {}
 
-        df = yf.download(
-            upper_syms, period="5d", auto_adjust=True,
-            progress=False,
-        )
-        if df.empty:
-            return _fetch_bulk_stock_prices_fallback(symbols)
+    result: dict[str, float] = {}
+    unresolved: list[str] = []
 
-        # df["Close"] is a DataFrame with one column per ticker
-        close_df = df["Close"]
-        result = {}
-        for sym_upper in upper_syms:
-            if sym_upper in close_df.columns:
-                col = close_df[sym_upper].dropna()
-                if not col.empty:
-                    result[sym_map[sym_upper]] = float(col.iloc[-1])
-        return result if result else _fetch_bulk_stock_prices_fallback(symbols)
+    for normalized, original in normalized_to_original.items():
+        cached = _cache_get(f"stock:{normalized}")
+        if cached is not None:
+            result[original] = cached
+        else:
+            unresolved.append(normalized)
 
-    except Exception:
-        return _fetch_bulk_stock_prices_fallback(symbols)
+    if unresolved:
+        max_workers = min(_MAX_BULK_WORKERS, len(unresolved))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            future_map = {
+                pool.submit(_fetch_stock_price_no_cache, normalized): normalized
+                for normalized in unresolved
+            }
+            for future in as_completed(future_map):
+                normalized = future_map[future]
+                original = normalized_to_original[normalized]
+                try:
+                    price = future.result()
+                except Exception:
+                    price = None
+                if price is not None:
+                    _cache_set(f"stock:{normalized}", price)
+                    result[original] = price
+
+    if len(result) < len(normalized_to_original):
+        for normalized, original in normalized_to_original.items():
+            if original in result:
+                continue
+            stale = _cache_get(f"stock:{normalized}", allow_stale=True)
+            if stale is not None:
+                result[original] = stale
+
+    return result
 
 
 def _fetch_bulk_stock_prices_fallback(symbols: list[str]) -> dict[str, float]:

@@ -16,3 +16,6 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI", "sqlite:///portfolio.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
+    FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+    PRICE_CACHE_TTL_SECONDS = int(os.getenv("PRICE_CACHE_TTL_SECONDS", "300"))
+    PRICE_REQUEST_TIMEOUT_SECONDS = int(os.getenv("PRICE_REQUEST_TIMEOUT_SECONDS", "8"))
