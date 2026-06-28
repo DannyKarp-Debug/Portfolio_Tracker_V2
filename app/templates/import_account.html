@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Import Account — Portfolio Tracker{% endblock %}
+
+{% block content %}
+<h1>Import Account</h1>
+
+<form method="POST" enctype="multipart/form-data" class="form-card" id="importForm">
+    <div class="form-group">
+        <label for="import_file">Account Export File (JSON)</label>
+        <input type="file" id="import_file" name="import_file" accept="application/json,.json" required>
+        <small class="form-help">Select a JSON file exported from another Portfolio Tracker account.</small>
+    </div>
+
+    <div class="form-group">
+        <label for="target_mode">Import Target</label>
+        <select id="target_mode" name="target_mode" required>
+            <option value="create_new" {{ 'selected' if data.get('target_mode') == 'create_new' else '' }}>
+                Create a new account from file
+            </option>
+            <option value="append_existing" {{ 'selected' if data.get('target_mode') == 'append_existing' else '' }}>
+                Append transactions to an existing account
+            </option>
+        </select>
+    </div>
+
+    <div class="form-group hidden" id="existingAccountGroup">
+        <label for="existing_account_id">Existing Account</label>
+        <select id="existing_account_id" name="existing_account_id">
+            <option value="">— Select account —</option>
+            {% for acct in accounts %}
+            <option value="{{ acct.id }}" {{ 'selected' if (data.get('existing_account_id')|string) == (acct.id|string) else '' }}>
+                {{ acct.name }} ({{ acct.account_type | upper }})
+            </option>
+            {% endfor %}
+        </select>
+        <small class="form-help">The import will append transactions into this selected account.</small>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Import</button>
+        <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-outline">Cancel</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function syncImportTargetFields() {
+    const mode = document.getElementById('target_mode').value;
+    const group = document.getElementById('existingAccountGroup');
+    const select = document.getElementById('existing_account_id');
+
+    if (mode === 'append_existing') {
+        group.classList.remove('hidden');
+        select.setAttribute('required', 'required');
+    } else {
+        group.classList.add('hidden');
+        select.removeAttribute('required');
+    }
+}
+
+const targetModeSelect = document.getElementById('target_mode');
+targetModeSelect.addEventListener('change', syncImportTargetFields);
+syncImportTargetFields();
+</script>
+{% endblock %}

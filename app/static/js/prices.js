@@ -113,18 +113,21 @@
         markPricesLoaded();
     }
 
+    function getAccountSummary(dashboard, accountId) {
+        for (var i = 0; i < (dashboard.accounts || []).length; i++) {
+            if (dashboard.accounts[i].account.id === accountId) {
+                return dashboard.accounts[i];
+            }
+        }
+        return null;
+    }
+
     // -----------------------------------------------------------------------
     // DOM update -- account detail page
     // -----------------------------------------------------------------------
 
     function applyPricesToAccountDetail(dashboard, accountId) {
-        var summary = null;
-        for (var i = 0; i < (dashboard.accounts || []).length; i++) {
-            if (dashboard.accounts[i].account.id === accountId) {
-                summary = dashboard.accounts[i];
-                break;
-            }
-        }
+        var summary = getAccountSummary(dashboard, accountId);
         if (!summary) return;
 
         // Summary cards
@@ -142,6 +145,7 @@
         });
 
         markPricesLoaded();
+        return summary;
     }
 
     // -----------------------------------------------------------------------
@@ -240,7 +244,7 @@
         return holdings.some(function (h) { return parseFloat(h.current_value) > 0; });
     }
 
-    function fetchAndApply(applyFn) {
+    function fetchAndApply(applyFn, options) {
         setLoadingState(true);
         fetch('/api/dashboard_data')
             .then(function (res) { return res.json(); })
@@ -249,12 +253,16 @@
                 if (pricesActuallyLoaded(data)) {
                     setCachedData(data);
                 }
-                applyFn(data);
+                var appliedSummary = applyFn(data);
                 setLoadingState(false);
-                // Reload the portfolio chart if available
-                if (typeof window.loadPortfolioChart === 'function') {
+
+                if (options.isDashboard && typeof window.loadPortfolioChart === 'function') {
                     window.loadPortfolioChart(data.total_value);
+                } else if (!options.isDashboard && typeof window.loadAccountPortfolioChart === 'function') {
+                    var accountTotal = appliedSummary ? appliedSummary.total_value : null;
+                    window.loadAccountPortfolioChart(options.accountId, accountTotal);
                 }
+
                 if (!pricesActuallyLoaded(data)) {
                     var bar = document.getElementById('price-status-bar');
                     if (bar) {
@@ -286,7 +294,8 @@
 
         var applyFn = isDashboard
             ? applyPricesToDashboard
-            : function (data) { applyPricesToAccountDetail(data, parseInt(accountDetailEl.dataset.accountId)); };
+            : function (data) { return applyPricesToAccountDetail(data, parseInt(accountDetailEl.dataset.accountId, 10)); };
+        var accountId = accountDetailEl ? parseInt(accountDetailEl.dataset.accountId, 10) : null;
 
         // Read server-side last transaction timestamp embedded in the page
         var serverLastTxTs = document.querySelector('meta[name="last-tx-ts"]');
@@ -294,14 +303,15 @@
 
         var cached = getCachedData(serverLastTxTs);
         if (cached) {
-            applyFn(cached);
-            // Also render the chart from the cached total so it is loaded once,
-            // correctly, even on a cache-hit (no second fetch, no flicker).
+            var cachedSummary = applyFn(cached);
             if (isDashboard && typeof window.loadPortfolioChart === 'function') {
                 window.loadPortfolioChart(cached.total_value);
+            } else if (!isDashboard && typeof window.loadAccountPortfolioChart === 'function') {
+                var cachedTotal = cachedSummary ? cachedSummary.total_value : null;
+                window.loadAccountPortfolioChart(accountId, cachedTotal);
             }
         } else {
-            fetchAndApply(applyFn);
+            fetchAndApply(applyFn, { isDashboard: isDashboard, accountId: accountId });
         }
 
         // Refresh / Recalculate button
@@ -309,7 +319,7 @@
         if (refreshBtn) {
             refreshBtn.addEventListener('click', function () {
                 clearCache();
-                fetchAndApply(applyFn);
+                fetchAndApply(applyFn, { isDashboard: isDashboard, accountId: accountId });
             });
         }
     });

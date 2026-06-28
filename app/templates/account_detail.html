@@ -14,6 +14,8 @@
     </div>
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
         <button id="refreshPricesBtn" class="btn btn-outline btn-sm">🔄 Refresh / Recalculate</button>
+        <a href="{{ url_for('accounts.export_account', account_id=summary.account.id) }}" class="btn btn-outline btn-sm">Export</a>
+        <a href="{{ url_for('accounts.import_account') }}" class="btn btn-outline btn-sm">Import</a>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('renameModal').classList.remove('hidden')">✏️ Rename</button>
         <form method="POST" action="{{ url_for('accounts.delete_account', account_id=summary.account.id) }}"
               onsubmit="return confirm('Delete account ' + {{ summary.account.name | tojson }} + ' and ALL its transactions? This cannot be undone.')">
@@ -44,6 +46,11 @@
         <div class="card-label">P&amp;L</div>
         <div class="card-value price-placeholder" id="dash-total-pnl">—</div>
     </div>
+</div>
+
+<div class="chart-section">
+    <h2>Account Value Over Time</h2>
+    <canvas id="accountPortfolioChart" data-account-chart-id="{{ summary.account.id }}" height="80"></canvas>
 </div>
 
 <!-- Holdings Table -->

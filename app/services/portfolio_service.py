@@ -306,7 +306,9 @@ def get_combined_dashboard(skip_prices: bool = False) -> dict:
     }
 
 
-def get_portfolio_value_history(current_total: float | None = None) -> list[dict]:
+def get_portfolio_value_history(
+    current_total: float | None = None, account_id: int | None = None
+) -> list[dict]:
     """
     Build a time series of capital deployed into the portfolio over time.
 
@@ -322,6 +324,8 @@ def get_portfolio_value_history(current_total: float | None = None) -> list[dict
         current_total: Pre-computed current portfolio total value. Pass this
             from the frontend once live prices are known. When None the series
             simply ends at the most recent deposit-based cumulative value.
+        account_id: Optional account id. When provided, the series is computed
+            only for that account's transactions.
 
     Returns:
         List of dicts with 'date' and 'value' keys, sorted chronologically.
@@ -330,17 +334,21 @@ def get_portfolio_value_history(current_total: float | None = None) -> list[dict
     from app import db as _db
     from datetime import date
 
+    query = _db.session.query(
+        func.date(Transaction.timestamp).label("day"),
+        func.sum(
+            _db.case(
+                (Transaction.tx_type == "deposit", Transaction.total_amount),
+                (Transaction.tx_type == "withdrawal", -Transaction.total_amount),
+                else_=0,
+            )
+        ).label("net"),
+    )
+    if account_id is not None:
+        query = query.filter(Transaction.account_id == account_id)
+
     rows = (
-        _db.session.query(
-            func.date(Transaction.timestamp).label("day"),
-            func.sum(
-                _db.case(
-                    (Transaction.tx_type == "deposit", Transaction.total_amount),
-                    (Transaction.tx_type == "withdrawal", -Transaction.total_amount),
-                    else_=0,
-                )
-            ).label("net"),
-        )
+        query
         .group_by(func.date(Transaction.timestamp))
         .order_by(func.date(Transaction.timestamp))
         .all()

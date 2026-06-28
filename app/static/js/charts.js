@@ -5,41 +5,59 @@
 
 document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------------------------
-    // Portfolio Value Over Time Chart (dashboard only)
+    // Portfolio Value Over Time (dashboard + account detail)
     // ---------------------------------------------------------------
-    var portfolioChartInstance = null;
+    var portfolioChartInstances = {};
 
-    window.loadPortfolioChart = function (currentValue) {
-        var portfolioCanvas = document.getElementById('portfolioChart');
-        if (!portfolioCanvas) return;
+    function renderPortfolioHistoryChart(config) {
+        var canvas = config.canvas;
+        var key = config.key;
+        var label = config.label;
+        var baseUrl = config.baseUrl;
+        var currentValue = config.currentValue;
+        var emptyMessage = config.emptyMessage;
 
         // Destroy existing chart before re-rendering
-        if (portfolioChartInstance) {
-            portfolioChartInstance.destroy();
-            portfolioChartInstance = null;
+        if (portfolioChartInstances[key]) {
+            portfolioChartInstances[key].destroy();
+            portfolioChartInstances[key] = null;
         }
 
-        var url = '/api/portfolio_history';
+        var url = baseUrl;
         if (currentValue != null) {
-            url += '?current_value=' + encodeURIComponent(currentValue);
+            url += (url.indexOf('?') >= 0 ? '&' : '?')
+                + 'current_value=' + encodeURIComponent(currentValue);
         }
+
+        var chartContainer = canvas.parentElement;
+        var emptyMsg = chartContainer.querySelector('.portfolio-chart-empty');
 
         fetch(url)
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (!data || data.length === 0) {
-                    portfolioCanvas.parentElement.innerHTML += '<p class="muted" style="text-align:center;margin-top:1rem;">No data yet -- add transactions to see your portfolio chart.</p>';
+                    if (!emptyMsg) {
+                        emptyMsg = document.createElement('p');
+                        emptyMsg.className = 'muted portfolio-chart-empty';
+                        emptyMsg.style.textAlign = 'center';
+                        emptyMsg.style.marginTop = '1rem';
+                        chartContainer.appendChild(emptyMsg);
+                    }
+                    emptyMsg.textContent = emptyMessage;
                     return;
                 }
+
+                if (emptyMsg) emptyMsg.remove();
+
                 var labels = data.map(function (d) { return d.date; });
                 var values = data.map(function (d) { return d.value; });
 
-                portfolioChartInstance = new Chart(portfolioCanvas, {
+                portfolioChartInstances[key] = new Chart(canvas, {
                     type: 'line',
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: 'Portfolio Value ($)',
+                            label: label,
                             data: values,
                             borderColor: '#4f8cff',
                             backgroundColor: 'rgba(79,140,255,0.08)',
@@ -81,12 +99,43 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(function (err) {
                 console.error('Portfolio chart error:', err);
             });
+    }
+
+    window.loadPortfolioChart = function (currentValue) {
+        var portfolioCanvas = document.getElementById('portfolioChart');
+        if (!portfolioCanvas) return;
+
+        renderPortfolioHistoryChart({
+            canvas: portfolioCanvas,
+            key: 'portfolio-total',
+            label: 'Portfolio Value ($)',
+            baseUrl: '/api/portfolio_history',
+            currentValue: currentValue,
+            emptyMessage: 'No data yet -- add transactions to see your portfolio chart.',
+        });
+    };
+
+    window.loadAccountPortfolioChart = function (accountId, currentValue) {
+        var accountCanvas = document.getElementById('accountPortfolioChart');
+        if (!accountCanvas) return;
+
+        var normalizedId = parseInt(accountId, 10);
+        if (!Number.isFinite(normalizedId)) return;
+
+        renderPortfolioHistoryChart({
+            canvas: accountCanvas,
+            key: 'portfolio-account-' + normalizedId,
+            label: 'Account Value ($)',
+            baseUrl: '/api/portfolio_history?account_id=' + encodeURIComponent(normalizedId),
+            currentValue: currentValue,
+            emptyMessage: 'No account data yet -- add transactions to see this account chart.',
+        });
     };
 
     // Chart is intentionally NOT auto-loaded here.
-    // prices.js triggers loadPortfolioChart(total_value) once live prices are
-    // available (from cache or a fresh fetch), ensuring the final chart point
-    // always matches the correct live total -- no double-render, no race.
+    // prices.js triggers the relevant chart loader once live prices are
+    // available (from cache or a fresh fetch), ensuring final chart points
+    // match the correct live totals without double-render races.
 
     // ---------------------------------------------------------------
     // Per-Asset Price History Modal

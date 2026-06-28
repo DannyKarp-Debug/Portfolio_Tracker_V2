@@ -49,12 +49,24 @@ def portfolio_history():
             total value. When supplied the last chart point is replaced with
             this real market value. When omitted the series ends at the last
             cumulative deposit figure (safe default -- no price fetch needed).
+        account_id (optional int): When provided, return history only for that
+            account.
 
     Returns:
         JSON list of {date, value} objects.
     """
     current_value = request.args.get("current_value", type=float)
-    series = get_portfolio_value_history(current_total=current_value)
+    account_id = request.args.get("account_id", type=int)
+
+    if account_id is not None:
+        from app import db as _db
+        account = _db.session.get(Account, account_id)
+        if not account:
+            return jsonify({"error": "account_id not found"}), 400
+
+    series = get_portfolio_value_history(
+        current_total=current_value, account_id=account_id
+    )
     return jsonify(series)
 
 

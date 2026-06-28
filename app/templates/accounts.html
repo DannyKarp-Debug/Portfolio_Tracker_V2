@@ -5,7 +5,10 @@
 {% block content %}
 <div class="page-header">
     <h1>Accounts</h1>
-    <a href="{{ url_for('accounts.create_account') }}" class="btn btn-primary">+ New Account</a>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+        <a href="{{ url_for('accounts.import_account') }}" class="btn btn-outline">Import Account</a>
+        <a href="{{ url_for('accounts.create_account') }}" class="btn btn-primary">+ New Account</a>
+    </div>
 </div>
 
 {% if accounts %}
@@ -21,6 +24,7 @@
         </div>
         <div class="account-card-footer" style="gap:0.5rem;flex-wrap:wrap;">
             <a href="{{ url_for('accounts.account_detail', account_id=acct.id) }}" class="btn btn-sm btn-outline">View Details</a>
+            <a href="{{ url_for('accounts.export_account', account_id=acct.id) }}" class="btn btn-sm btn-outline">Export</a>
             <button class="btn btn-sm btn-outline"
                     onclick="openRenameModal({{ acct.id }}, '{{ acct.name | replace("'", "\\'") }}')">✏️ Rename</button>
             <form method="POST" action="{{ url_for('accounts.delete_account', account_id=acct.id) }}" style="display:inline"
